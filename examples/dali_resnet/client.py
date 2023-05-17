@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,19 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
-import io
-import logging
-import numpy as np
-import base64
-from PIL import Image
 from pytriton.client import ModelClient
+import argparse
+import numpy as np
+import logging
 
 logger = logging.getLogger("examples.dali_resnet101_pytorch.client")
 
 IMAGE_PATHS = [
-    'dog-1461239_1280.jpg',
-    # 'padlock-406986_640.jpg',
+    'images/dog-1461239_1280.jpg',
 ]
 
 
@@ -41,37 +37,16 @@ def array_from_list(arrays):
     return np.stack(arrays)
 
 
-def ndarray_from_pil(pil_image):
-    """
-    Convert PIL image to ndarray. The ndarray will contain decoded image.
-    """
-    bytes = io.BytesIO()
-    pil_image.save(bytes, format="JPEG")
-    return np.frombuffer(bytes.getbuffer(), dtype=np.uint8)
-
-
-def to_ndarray(list_of_images):
-    """
-    Convert list of PIL images to ndarray.
-    """
-    return array_from_list([ndarray_from_pil(img) for img in list_of_images])
-
-
 def load_images(img_paths):
     return array_from_list([np.fromfile(f, dtype=np.uint8) for f in img_paths])
-
-def _decode_image_from_base64(msg):
-    msg = base64.b64decode(msg)
-    buffer = io.BytesIO(msg)
-    image = Image.open(buffer)
-    return image
 
 
 def infer_model(input, args):
     batch_size = input.shape[0]
+    assert batch_size == 1, "This example supports only batch_size == 1. See README.md for details."
     with ModelClient(args.url, "ResNet", init_timeout_s=args.init_timeout_s) as client:
         result_data = client.infer_batch(input)
-        import ipdb; ipdb.set_trace()
+
         original = result_data['original']
         segmented = result_data['segmented']
 
@@ -79,7 +54,7 @@ def infer_model(input, args):
             for i, (orig, segm) in enumerate(zip(original, segmented)):
                 import cv2
                 cv2.imwrite(f"orig{i}.jpg", orig)
-                cv2.imwrite(f"segm{i}.jpg", np.transpose(segm, (1, 2, 0)))
+                cv2.imwrite(f"segm{i}.jpg", segm)
 
         logger.info("Processing finished.")
 

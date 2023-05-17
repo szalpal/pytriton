@@ -1,5 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,34 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Bring the commons folder from the samples directory into our path so that
-# we can import modules from it.
-import os
-import sys
+# ---------------------------------------------------------------------------------------------------- #
+# This file is an excerpt from CV-CUDA segmentation example:                                           #
+# https://github.com/CVCUDA/CV-CUDA/blob/release_v0.3.x/samples/segmentation/python/model_inference.py #
+# ---------------------------------------------------------------------------------------------------- #
+
 import logging
 import torch
 import nvtx
 from torchvision.models import segmentation as segmentation_models
-import tensorrt as trt
 
-common_dir = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "common",
-    "python",
-)
-sys.path.insert(0, common_dir)
 
-# from trt_utils import convert_onnx_to_tensorrt, setup_tensort_bindings  # noqa: E402
-
-# docs_tag: begin_init_segmentationpytorch
-class SegmentationPyTorch:  # noqa: E302
-    def __init__(
-        self,
-        seg_class_name,
-        batch_size,
-        image_size,
-        device_id,
-    ):
+class SegmentationPyTorch:
+    def __init__(self, seg_class_name, device_id):
         self.logger = logging.getLogger(__name__)
         self.device_id = device_id
         # Fetch the segmentation index to class name information from the weights
@@ -76,26 +60,12 @@ class SegmentationPyTorch:  # noqa: E302
         self.model.eval()
 
         self.logger.info("Using PyTorch as the inference engine.")
-        # docs_tag: end_init_segmentationpytorch
 
-    # docs_tag: begin_call_segmentationpytorch
     def __call__(self, tensor):
         nvtx.push_range("inference.torch")
 
         with torch.no_grad():
-
-            if isinstance(tensor, torch.Tensor):
-                # We are all good here. Nothing needs to be done.
-                pass
-            else:
-                # Convert CVCUDA tensor to Torch tensor.
-                tensor = torch.as_tensor(
-                    tensor.cuda(), device="cuda:%d" % self.device_id
-                )
-
             segmented = self.model(tensor)
 
         nvtx.pop_range()
         return segmented
-
-    # docs_tag: end_call_segmentationpytorch

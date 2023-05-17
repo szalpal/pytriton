@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
-import io
 
 import numpy as np
 import torch
@@ -21,15 +19,12 @@ import torch
 from pytriton.decorators import batch
 from pytriton.model_config import DynamicBatcher, ModelConfig, Tensor
 from pytriton.triton import Triton, TritonConfig
-from PIL import Image
-import base64
+
 from nvidia.dali import pipeline_def
 import nvidia.dali.fn as fn
 import nvidia.dali.types as types
 
-from model_inference import (  # noqa: E402
-    SegmentationPyTorch,
-)
+from model_inference import SegmentationPyTorch
 
 MAX_BATCH_SIZE = 32
 
@@ -56,7 +51,6 @@ def dali_postprocessing_pipe(class_idx=0, prob_threshold=0.6):
     height = fn.cast(fn.external_source(device='cpu', name='height'), dtype=types.FLOAT)
     prob = fn.external_source(device='gpu', name='probabilities', layout='CHW')
     prob = fn.resize(prob, resize_x=width, resize_y=height, interp_type=types.DALIInterpType.INTERP_NN)
-    # return image, prob
     prob = fn.cast(prob > prob_threshold, dtype=types.UINT8)
     prob = fn.stack(prob[class_idx], prob[class_idx], prob[class_idx])
     return fn.transpose(image * prob, perm=(1, 2, 0))
@@ -87,24 +81,15 @@ def postprocess(images, probabilities):
     postprocessing_pipe.feed_input("probabilities", probabilities, layout='CHW')
     image_sizes = np.transpose(np.array(images.shape()))
     postprocessing_pipe.feed_input("height", image_sizes[0])
-    # postprocessing_pipe.feed_input("height", np.array([851,426]))
     postprocessing_pipe.feed_input("width", image_sizes[1])
-    # postprocessing_pipe.feed_input("width", np.array([1280, 640]))
     img, = postprocessing_pipe.run()
-    # import ipdb; ipdb.set_trace()
-    return dali_tensorlist_to_torch_tensor(img)
+    return img
 
 
 segmentation = SegmentationPyTorch(
     seg_class_name="__background__",
-    batch_size=MAX_BATCH_SIZE,
-    image_size=(224, 224),
     device_id=0,
 )
-
-
-def _encode_image_to_base64(image):
-    return base64.b64encode(image.tobytes())
 
 
 @batch
@@ -115,19 +100,9 @@ def _infer_fn(**enc):
     prob = segmentation(input)
     out = postprocess(image, prob)
 
-    orig = []
-    for img in image.as_cpu():
-        orig.append(_encode_image_to_base64(np.array(img)))
-
-    segm = []
-    for img in out.cpu():
-        segm.append(_encode_image_to_base64(np.array(img)))
-
     return {
-        "original": orig,
-        # "original": image.as_cpu().as_array(),
-        "segmented": segm,
-        # "segmented": np.array(out.cpu())
+        "original": image.as_cpu().as_array(),
+        "segmented": out.as_cpu().as_array(),
     }
 
 
@@ -140,12 +115,12 @@ def main():
                 Tensor(name="image", dtype=np.uint8, shape=(-1,)),  # Encoded image
             ],
             outputs=[
-                Tensor(name="original", dtype=np.object_, shape=(1,)),
-                Tensor(name="segmented", dtype=np.object_, shape=(1,)),
+                Tensor(name="original", dtype=np.uint8, shape=(-1, -1, -1)),
+                Tensor(name="segmented", dtype=np.uint8, shape=(-1, -1, -1)),
             ],
             config=ModelConfig(
                 max_batch_size=MAX_BATCH_SIZE,
-                batcher=DynamicBatcher(max_queue_delay_microseconds=5000),  # 5ms
+                batcher=DynamicBatcher(max_queue_delay_microseconds=5000),
             ),
         )
         triton.serve()
