@@ -20,30 +20,14 @@ import logging
 
 logger = logging.getLogger("examples.dali_resnet101_pytorch.client")
 
-IMAGE_PATHS = [
-    'images/dog-1461239_1280.jpg',
-]
+VIDEO_PATH = "test_video/sintel_trailer_short.mp4"
 
 
-def array_from_list(arrays):
-    """
-    Convert list of ndarrays to single ndarray with ndims+=1. Pad if necessary.
-    """
-    lengths = [arr.shape[0] for arr in arrays]
-    max_len = max(lengths)
-    arrays = [np.pad(arr, (0, max_len - arr.shape[0])) for arr in arrays]
-    for arr in arrays:
-        assert arr.shape == arrays[0].shape, "Arrays must have the same shape"
-    return np.stack(arrays)
-
-
-def load_images(img_paths):
-    return array_from_list([np.fromfile(f, dtype=np.uint8) for f in img_paths])
+def load_video(video_path):
+    return np.array(np.fromfile(video_path, dtype=np.uint8)).reshape(1, -1)
 
 
 def infer_model(input, args):
-    batch_size = input.shape[0]
-    assert batch_size == 1, "This example supports only batch_size == 1. See README.md for details."
     with ModelClient(args.url, "ResNet", init_timeout_s=args.init_timeout_s) as client:
         result_data = client.infer_batch(input)
 
@@ -53,8 +37,8 @@ def infer_model(input, args):
         if args.dump_images:
             for i, (orig, segm) in enumerate(zip(original, segmented)):
                 import cv2
-                cv2.imwrite(f"orig{i}.jpg", orig)
-                cv2.imwrite(f"segm{i}.jpg", segm)
+                cv2.imwrite(f"test_video/orig{i}.jpg", orig)
+                cv2.imwrite(f"test_video/segm{i}.jpg", segm)
 
         logger.info("Processing finished.")
 
@@ -90,10 +74,9 @@ def main():
         required=False,
     )
     parser.add_argument(
-        "--image-paths",
-        nargs='+',
+        "--video-path",
         default=None,
-        help="Paths of the images to process.",
+        help="Paths of the video to process.",
         required=False,
     )
     args = parser.parse_args()
@@ -101,7 +84,7 @@ def main():
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(name)s: %(message)s")
 
-    infer_model(load_images(IMAGE_PATHS), args)
+    infer_model(load_video(VIDEO_PATH if args.video_path is None else args.video_path), args)
 
 
 if __name__ == "__main__":

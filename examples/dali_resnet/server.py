@@ -26,34 +26,33 @@ import nvidia.dali.types as types
 
 from model_inference import SegmentationPyTorch
 
-MAX_BATCH_SIZE = 32
+MAX_BATCH_SIZE = 5
+SEQUENCE_LENGTH = 4
 
 
 @pipeline_def(batch_size=MAX_BATCH_SIZE, num_threads=4, device_id=0, prefetch_queue_depth=1)
 def dali_preprocessing_pipe():
-    encoded = fn.external_source(device='cpu', name='encoded')  # Input from PyTriton is always on CPU.
-    decoded = fn.decoders.image(encoded, device='mixed', output_type=types.RGB)
+    decoded = fn.experimental.inputs.video(name='encoded', sequence_length=4, device='mixed')
     preprocessed = fn.resize(decoded, resize_x=224, resize_y=224)
     preprocessed = fn.crop_mirror_normalize(preprocessed,
                                             dtype=types.FLOAT,
-                                            output_layout='CHW',
+                                            output_layout='FCHW',
                                             crop=(224, 224),
                                             mean=[0.485 * 255, 0.456 * 255, 0.406 * 255],
                                             std=[0.229 * 255, 0.224 * 255, 0.225 * 255])
     return decoded, preprocessed
 
 
-@pipeline_def(batch_size=MAX_BATCH_SIZE, num_threads=4, device_id=0, prefetch_queue_depth=1)
+@pipeline_def(batch_size=MAX_BATCH_SIZE * SEQUENCE_LENGTH, num_threads=4, device_id=0, prefetch_queue_depth=1)
 def dali_postprocessing_pipe(class_idx=0, prob_threshold=0.6):
     image = fn.external_source(device='gpu', name='image', layout='HWC')
-    image = fn.transpose(image, perm=(2, 0, 1))
     width = fn.cast(fn.external_source(device='cpu', name='width'), dtype=types.FLOAT)
     height = fn.cast(fn.external_source(device='cpu', name='height'), dtype=types.FLOAT)
     prob = fn.external_source(device='gpu', name='probabilities', layout='CHW')
+    prob = fn.expand_dims(prob[class_idx], axes=[2], new_axis_names='C')
     prob = fn.resize(prob, resize_x=width, resize_y=height, interp_type=types.DALIInterpType.INTERP_NN)
     prob = fn.cast(prob > prob_threshold, dtype=types.UINT8)
-    prob = fn.stack(prob[class_idx], prob[class_idx], prob[class_idx])
-    return fn.transpose(image * prob, perm=(1, 2, 0))
+    return image * prob
 
 
 preprocessing_pipe = dali_preprocessing_pipe()
@@ -62,26 +61,17 @@ postprocessing_pipe = dali_postprocessing_pipe()
 postprocessing_pipe.build()
 
 
-def dali_tensorlist_to_torch_tensor(tensorlist_gpu):
-    import cupy as cp
-    dali_t = tensorlist_gpu.as_tensor()
-    cp_t = cp.asarray(dali_t)
-    torch_t = torch.tensor(cp_t)
-    return torch_t.cuda()
-
-
 def preprocess(images):
     preprocessing_pipe.feed_input("encoded", images)
     imgs, preprocessed = preprocessing_pipe.run()
-    return imgs, dali_tensorlist_to_torch_tensor(preprocessed)
+    return torch.as_tensor(imgs), torch.as_tensor(preprocessed)
 
 
 def postprocess(images, probabilities):
     postprocessing_pipe.feed_input("image", images, layout='HWC')
     postprocessing_pipe.feed_input("probabilities", probabilities, layout='CHW')
-    image_sizes = np.transpose(np.array(images.shape()))
-    postprocessing_pipe.feed_input("height", image_sizes[0])
-    postprocessing_pipe.feed_input("width", image_sizes[1])
+    postprocessing_pipe.feed_input("height", np.full(images.shape[0], images.shape[1]))
+    postprocessing_pipe.feed_input("width", np.full(images.shape[0], images.shape[2]))
     img, = postprocessing_pipe.run()
     return img
 
@@ -94,14 +84,18 @@ segmentation = SegmentationPyTorch(
 
 @batch
 def _infer_fn(**enc):
-    enc = enc["image"]
+    enc = enc["video"]
 
     image, input = preprocess(enc)
+
+    input = input.reshape(-1, *input.shape[-3:])  # NFCHW to NCHW (flattening first two dimensions)
+    image = image.reshape(-1, *image.shape[-3:])  # NFCHW to NCHW (flattening first two dimensions)
+
     prob = segmentation(input)
     out = postprocess(image, prob)
 
     return {
-        "original": image.as_cpu().as_array(),
+        "original": image.cpu().numpy(),
         "segmented": out.as_cpu().as_array(),
     }
 
@@ -112,7 +106,7 @@ def main():
             model_name="ResNet",
             infer_func=_infer_fn,
             inputs=[
-                Tensor(name="image", dtype=np.uint8, shape=(-1,)),  # Encoded image
+                Tensor(name="video", dtype=np.uint8, shape=(-1,)),  # Encoded image
             ],
             outputs=[
                 Tensor(name="original", dtype=np.uint8, shape=(-1, -1, -1)),
