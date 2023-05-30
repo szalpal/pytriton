@@ -51,8 +51,8 @@ def dali_postprocessing_pipe(class_idx=0, prob_threshold=0.6):
     prob = fn.external_source(device='gpu', name='probabilities', layout='CHW')
     prob = fn.expand_dims(prob[class_idx], axes=[2], new_axis_names='C')
     prob = fn.resize(prob, resize_x=width, resize_y=height, interp_type=types.DALIInterpType.INTERP_NN)
-    prob = fn.cast(prob > prob_threshold, dtype=types.UINT8)
-    return image * prob
+    mask = fn.cast(prob > prob_threshold, dtype=types.UINT8)
+    return image * mask
 
 
 preprocessing_pipe = dali_preprocessing_pipe()

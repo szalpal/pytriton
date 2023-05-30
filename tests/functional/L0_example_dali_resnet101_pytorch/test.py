@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Test of huggingface_resnet_pytorch example"""
 import argparse
 import logging
-import re
 import signal
-import subprocess
 import sys
 import time
 
@@ -34,26 +31,23 @@ METADATA = {
 }
 
 
-def verify_client_output(client_output):
-    expected_pattern = r"Last result: \{'label': b'tiger cat'\}"
-    output_match = re.search(expected_pattern, client_output, re.MULTILINE)
-    output_array = output_match.group(0) if output_match else None
-    if not output_array:
-        raise ValueError(f"Could not find {expected_pattern} in client output")
-    else:
-        LOGGER.info(f'Found "{expected_pattern}" in client output')
+def assert_container_version():
+    cv = get_current_container_version().split('.')
+    assert int(cv[0]) >= 23, "This example works for container version 23.05 or later."
+    assert int(cv[1]) >= 5, "This example works for container version 23.05 or later."
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test for dali_resnet101 example.")
+    parser = argparse.ArgumentParser(description="Test for dali_resnet101_pytorch example.")
     parser.add_argument("--timeout-s", required=False, default=300, type=float, help="Timeout for test")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG, format=DEFAULT_LOG_FORMAT)
 
+    assert_container_version()
     docker_image_with_name = METADATA["image_name"].format(TEST_CONTAINER_VERSION=get_current_container_version())
     verify_docker_image_in_readme_same_as_tested(
-        "examples/huggingface_resnet_pytorch//README.md", docker_image_with_name
+        "examples/dali_resnet101_pytorch/README.md", docker_image_with_name
     )
 
     start_time = time.time()
@@ -82,8 +76,6 @@ def main():
     if timeout:
         LOGGER.error(f"Timeout occurred (timeout_s={args.timeout_s})")
         sys.exit(-2)
-
-    verify_client_output(client_thread.output)
 
 
 if __name__ == "__main__":

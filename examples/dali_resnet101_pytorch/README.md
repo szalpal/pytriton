@@ -82,17 +82,13 @@ This example assumes the following dependencies installed in your system:
 
 To run this example, please follow these steps:
 
-1. Build docker image for the Triton server:
+1. Run the NVIDIA PyTorch container:
 
 ```shell
-$ docker build -t pytriton_dali .
+$ docker run -it --gpus all --shm-size 8gb -v $(pwd):/dali -w /dali --net host nvcr.io/nvidia/pytorch:23.05-py3 bash
 ```
 
-2. Run the docker container based on the image built in the previous step:
-
-```shell
-$ docker run -it --gpus all --shm-size 8gb -v $(pwd):/dali -w /dali --net host pytriton_dali bash
-```
+2. Install PyTriton following the [installation instruction](../../README.md#installation)
 
 3. Inside the container start the Triton server:
 
