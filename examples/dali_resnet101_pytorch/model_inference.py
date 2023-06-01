@@ -18,8 +18,9 @@
 # ---------------------------------------------------------------------------------------------------- #
 
 import logging
-import torch
+
 import nvtx
+import torch
 from torchvision.models import segmentation as segmentation_models
 
 
