@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pytriton.client import ModelClient
 import argparse
-import numpy as np
 import logging
+
+import numpy as np
+
+from pytriton.client import ModelClient
 
 logger = logging.getLogger("examples.dali_resnet101_pytorch.client")
 
@@ -31,12 +33,13 @@ def infer_model(input, args):
     with ModelClient(args.url, "ResNet", init_timeout_s=args.init_timeout_s) as client:
         result_data = client.infer_batch(input)
 
-        original = result_data['original']
-        segmented = result_data['segmented']
+        original = result_data["original"]
+        segmented = result_data["segmented"]
 
         if args.dump_images:
             for i, (orig, segm) in enumerate(zip(original, segmented)):
                 import cv2
+
                 cv2.imwrite(f"test_video/orig{i}.jpg", orig)
                 cv2.imwrite(f"test_video/segm{i}.jpg", segm)
 

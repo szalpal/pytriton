@@ -14,17 +14,15 @@
 # limitations under the License.
 
 import numpy as np
+import nvidia.dali.fn as fn
+import nvidia.dali.types as types
 import torch
+from model_inference import SegmentationPyTorch
+from nvidia.dali import pipeline_def
 
 from pytriton.decorators import batch
 from pytriton.model_config import DynamicBatcher, ModelConfig, Tensor
 from pytriton.triton import Triton, TritonConfig
-
-from nvidia.dali import pipeline_def
-import nvidia.dali.fn as fn
-import nvidia.dali.types as types
-
-from model_inference import SegmentationPyTorch
 
 MAX_BATCH_SIZE = 5
 SEQUENCE_LENGTH = 4
@@ -32,24 +30,26 @@ SEQUENCE_LENGTH = 4
 
 @pipeline_def(batch_size=MAX_BATCH_SIZE, num_threads=4, device_id=0, prefetch_queue_depth=1)
 def dali_preprocessing_pipe():
-    decoded = fn.experimental.inputs.video(name='encoded', sequence_length=4, device='mixed')
+    decoded = fn.experimental.inputs.video(name="encoded", sequence_length=4, device="mixed")
     preprocessed = fn.resize(decoded, resize_x=224, resize_y=224)
-    preprocessed = fn.crop_mirror_normalize(preprocessed,
-                                            dtype=types.FLOAT,
-                                            output_layout='FCHW',
-                                            crop=(224, 224),
-                                            mean=[0.485 * 255, 0.456 * 255, 0.406 * 255],
-                                            std=[0.229 * 255, 0.224 * 255, 0.225 * 255])
+    preprocessed = fn.crop_mirror_normalize(
+        preprocessed,
+        dtype=types.FLOAT,
+        output_layout="FCHW",
+        crop=(224, 224),
+        mean=[0.485 * 255, 0.456 * 255, 0.406 * 255],
+        std=[0.229 * 255, 0.224 * 255, 0.225 * 255],
+    )
     return decoded, preprocessed
 
 
 @pipeline_def(batch_size=MAX_BATCH_SIZE * SEQUENCE_LENGTH, num_threads=4, device_id=0, prefetch_queue_depth=1)
 def dali_postprocessing_pipe(class_idx=0, prob_threshold=0.6):
-    image = fn.external_source(device='gpu', name='image', layout='HWC')
-    width = fn.cast(fn.external_source(device='cpu', name='width'), dtype=types.FLOAT)
-    height = fn.cast(fn.external_source(device='cpu', name='height'), dtype=types.FLOAT)
-    prob = fn.external_source(device='gpu', name='probabilities', layout='CHW')
-    prob = fn.expand_dims(prob[class_idx], axes=[2], new_axis_names='C')
+    image = fn.external_source(device="gpu", name="image", layout="HWC")
+    width = fn.cast(fn.external_source(device="cpu", name="width"), dtype=types.FLOAT)
+    height = fn.cast(fn.external_source(device="cpu", name="height"), dtype=types.FLOAT)
+    prob = fn.external_source(device="gpu", name="probabilities", layout="CHW")
+    prob = fn.expand_dims(prob[class_idx], axes=[2], new_axis_names="C")
     prob = fn.resize(prob, resize_x=width, resize_y=height, interp_type=types.DALIInterpType.INTERP_NN)
     mask = fn.cast(prob > prob_threshold, dtype=types.UINT8)
     return image * mask
@@ -68,11 +68,11 @@ def preprocess(images):
 
 
 def postprocess(images, probabilities):
-    postprocessing_pipe.feed_input("image", images, layout='HWC')
-    postprocessing_pipe.feed_input("probabilities", probabilities, layout='CHW')
+    postprocessing_pipe.feed_input("image", images, layout="HWC")
+    postprocessing_pipe.feed_input("probabilities", probabilities, layout="CHW")
     postprocessing_pipe.feed_input("height", np.full(images.shape[0], images.shape[1]))
     postprocessing_pipe.feed_input("width", np.full(images.shape[0], images.shape[2]))
-    img, = postprocessing_pipe.run()
+    (img,) = postprocessing_pipe.run()
     return img
 
 
