@@ -32,7 +32,7 @@ METADATA = {
 
 
 def assert_container_version():
-    cv = get_current_container_version().split('.')
+    cv = get_current_container_version().split(".")
     assert int(cv[0]) >= 23, "This example works for container version 23.05 or later."
     assert int(cv[1]) >= 5, "This example works for container version 23.05 or later."
 
@@ -46,9 +46,7 @@ def main():
 
     assert_container_version()
     docker_image_with_name = METADATA["image_name"].format(TEST_CONTAINER_VERSION=get_current_container_version())
-    verify_docker_image_in_readme_same_as_tested(
-        "examples/dali_resnet101_pytorch/README.md", docker_image_with_name
-    )
+    verify_docker_image_in_readme_same_as_tested("examples/dali_resnet101_pytorch/README.md", docker_image_with_name)
 
     start_time = time.time()
     elapsed_s = 0
